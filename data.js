@@ -99,7 +99,7 @@ const scriptData = [
             "愿你日日是好日，有时而风，时而雨，时而烈酒入喉，时而黄昏温柔。悲喜都尽兴，不枉少年游。\n" +
             "\n" +
             "愿你永葆赤子之心，多年后，若灯下围坐，杯沿碰响，可把酒言欢，笑谈从前。\n" +
-            "\n",autoNext: 2000, action: "GAME_END" },
+            "\n",autoNext: 2000 },
     { speaker: "Salmon",text: "生日快乐，nzy",autoNext: 2500},
     { speaker: "Salmon",text: " ",autoNext: 2500, action: "GAME_END" },
 ];
