@@ -97,29 +97,24 @@ function startPuzzle1() {
         // 构建拼图界面的专属样式和 HTML
         const jigsawHTML = `
             <style>
-                /* 修改了容器，防止手机端内容被截断 */
                 #jigsaw-container { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; background: #050505; padding-top: 5vh; box-sizing: border-box; }
                 
-                /* 缩小了标题字号，适应手机屏幕 */
+                /* 标题增加了操作提示 */
                 #jigsaw-title { color: #00ffea; letter-spacing: 1px; margin-bottom: 20px; font-weight: normal; font-size: 1.1rem; text-align: center; width: 90%; }
                 
-                /* ⭐️ 核心修改：flex-direction: column 让排版变成竖向 */
                 .jigsaw-layout { display: flex; flex-direction: column; gap: 20px; align-items: center; }
-                
-                /* 拼图目标板：保持 4x4 网格，在上方 */
+                #pieces-tray { width: 336px; min-height: 200px; background: rgba(0,255,234,0.05); border: 1px dashed #00ffea; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; align-content: flex-start; box-sizing: border-box; }
                 #puzzle-board { width: 336px; height: 336px; border: 2px solid #333; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); background: #111; gap: 0; box-sizing: border-box; }
                 
-                /* 碎片收纳区：在下方，宽度对齐拼图板，高度改为自适应 */
-                #pieces-tray { width: 336px; min-height: 200px; background: rgba(0,255,234,0.05); border: 1px dashed #00ffea; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; align-content: flex-start; box-sizing: border-box; }
+                .jigsaw-slot { width: 84px; height: 84px; border: 1px solid #222; box-sizing: border-box; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+                .jigsaw-piece { width: 82px; height: 82px; cursor: pointer; background-image: url('img/jigsaw.jpg'); background-size: 328px 328px; transition: transform 0.2s, border 0.2s, box-shadow 0.2s; box-sizing: border-box; }
                 
-                /* 单个格子和碎片的尺寸设置 */
-                .jigsaw-slot { width: 84px; height: 84px; border: 1px solid #222; box-sizing: border-box; }
-                .jigsaw-piece { width: 82px; height: 82px; cursor: grab; background-image: url('img/jigsaw.jpg'); background-size: 328px 328px; transition: transform 0.1s; }
-                .jigsaw-piece:active { cursor: grabbing; transform: scale(0.95); }
+                /* ⭐️ 核心：选中状态的特效，让玩家知道点中了哪一块 */
+                .jigsaw-piece.selected { transform: scale(0.9); border: 3px solid #0f0; box-shadow: 0 0 15px rgba(0,255,0,0.8); z-index: 10; }
             </style>
 
             <div id="jigsaw-container">
-                <h2 id="jigsaw-title">WARNING: 思维碎片已破碎，请手动重排</h2>
+                <h2 id="jigsaw-title">WARNING: 空间坐标已破碎<br><span style="font-size:0.8rem; color:#aaa;">(先点击选中碎片，再点击空位放置)</span></h2>
                 <div class="jigsaw-layout">
                     <div id="puzzle-board"></div>
                     <div id="pieces-tray"></div>
@@ -132,80 +127,83 @@ function startPuzzle1() {
         const board = document.getElementById('puzzle-board');
         const tray = document.getElementById('pieces-tray');
 
-        let draggedPiece = null; // 记录当前鼠标抓起的碎片
+        let selectedPiece = null; // 记录当前手指点中的碎片
 
         // 1. 生成 16 个底座插槽
         for (let i = 0; i < 16; i++) {
             let slot = document.createElement('div');
             slot.className = 'jigsaw-slot';
-            slot.dataset.targetIndex = i; // 这个插槽只认编号为 i 的碎片
+            slot.dataset.targetIndex = i;
 
-            // 允许碎片拖拽放置到插槽上
-            slot.addEventListener('dragover', (e) => e.preventDefault());
-            slot.addEventListener('drop', handleDrop);
+            // 交互逻辑：点击插槽来放置选中的碎片
+            slot.addEventListener('click', () => {
+                if (selectedPiece) {
+                    // 如果格子里已经有别的碎片了，把旧的挤回托盘
+                    if (slot.children.length > 0) {
+                        tray.appendChild(slot.children[0]);
+                    }
+                    slot.appendChild(selectedPiece);
+                    // 放置后取消发光状态
+                    selectedPiece.classList.remove('selected');
+                    selectedPiece = null;
+                    checkWinCondition();
+                }
+            });
             board.appendChild(slot);
         }
 
-        // 允许碎片被扔回托盘区
-        tray.addEventListener('dragover', (e) => e.preventDefault());
-        tray.addEventListener('drop', handleDrop);
+        // 交互逻辑：点一下托盘的空白处，可以把拿在手里的碎片放回去
+        tray.addEventListener('click', (e) => {
+            if (selectedPiece && e.target === tray) {
+                tray.appendChild(selectedPiece);
+                selectedPiece.classList.remove('selected');
+                selectedPiece = null;
+            }
+        });
 
         // 2. 生成 16 个图片碎片
         let pieces = [];
         for (let i = 0; i < 16; i++) {
             let piece = document.createElement('div');
             piece.className = 'jigsaw-piece';
-            piece.dataset.index = i; // 碎片的真实编号
-            piece.draggable = true;
+            piece.dataset.index = i;
 
-            // 核心魔法：计算背景图片的偏移量，让每个碎片显示不同的部位
             let col = i % 4;
             let row = Math.floor(i / 4);
             piece.style.backgroundPosition = `-${col * 82}px -${row * 82}px`;
 
-            // 记录拖拽状态
-            piece.addEventListener('dragstart', (e) => {
-                draggedPiece = piece;
-                setTimeout(() => piece.style.opacity = '0.5', 0); // 拖起时变半透明
-            });
-            piece.addEventListener('dragend', () => {
-                draggedPiece = null;
-                piece.style.opacity = '1';
-                checkWinCondition(); // 每次放下碎片后，检查是否过关
+            // 交互逻辑：点击碎片本身
+            piece.addEventListener('click', (e) => {
+                e.stopPropagation(); // 阻止点击事件穿透到底下的槽位
+
+                if (selectedPiece === piece) {
+                    // 如果点的就是当前发光的，就取消选中
+                    piece.classList.remove('selected');
+                    selectedPiece = null;
+                } else {
+                    // 如果手里已经拿着别的碎片，先让别的碎片暗下去
+                    if (selectedPiece) {
+                        selectedPiece.classList.remove('selected');
+                    }
+                    // 让当前点中的这块碎片发光变小
+                    piece.classList.add('selected');
+                    selectedPiece = piece;
+                }
             });
 
             pieces.push(piece);
         }
 
-        // 3. 把碎片顺序彻底打乱，并放到托盘里
+        // 3. 把碎片打乱放入托盘
         pieces.sort(() => Math.random() - 0.5);
         pieces.forEach(p => tray.appendChild(p));
 
-        // 4. 处理松开鼠标（放置）的逻辑
-        function handleDrop(e) {
-            e.preventDefault();
-            if (!draggedPiece) return;
-
-            const target = e.currentTarget; // 鼠标松开所在的地方（格子或托盘）
-
-            if (target.className === 'jigsaw-slot') {
-                // 如果格子里已经有别的碎片了，把旧碎片挤回托盘
-                if (target.children.length > 0) {
-                    tray.appendChild(target.children[0]);
-                }
-                target.appendChild(draggedPiece);
-            } else if (target.id === 'pieces-tray') {
-                target.appendChild(draggedPiece);
-            }
-        }
-
-        // 5. 胜利条件检测
+        // 4. 胜利条件检测
         function checkWinCondition() {
             const slots = document.querySelectorAll('.jigsaw-slot');
             let isWin = true;
 
             slots.forEach(slot => {
-                // 如果格子是空的，或者里面的碎片编号和格子编号不一致，就没拼对
                 if (slot.children.length === 0 || slot.children[0].dataset.index !== slot.dataset.targetIndex) {
                     isWin = false;
                 }
@@ -213,16 +211,16 @@ function startPuzzle1() {
 
             if (isWin) {
                 setTimeout(() => {
-                    document.getElementById('jigsaw-title').textContent = "坐标重组成功！即将跃迁...";
-                    document.getElementById('jigsaw-title').style.color = "#0f0";
+                    const title = document.getElementById('jigsaw-title');
+                    title.innerHTML = "坐标重组成功！即将跃迁...";
+                    title.style.color = "#0f0";
                     setTimeout(() => {
-                        // ⭐️ 这里是新的跳转逻辑：隐藏谜题，显示对话，进入下一句
                         els.puzzle.classList.add('hidden');
-                        els.puzzle.innerHTML = ''; // 清空第一关的画面
+                        els.puzzle.innerHTML = '';
                         els.container.classList.remove('hidden');
 
                         currentLineIndex++;
-                        renderLine(currentLineIndex); // 让主引擎继续打字
+                        renderLine(currentLineIndex);
                     }, 1500);
                 }, 300);
             }
